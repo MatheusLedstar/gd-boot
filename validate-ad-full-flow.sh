@@ -264,7 +264,7 @@ if [ -z "$ADMIN_JWT" ]; then
   warn "T2 PULADO — sem ADMIN_JWT"
 else
   RESP=$(curl -sS --max-time 10 \
-    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/management/users/lookup-ad?username=${AD_USER}" \
+    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/guardian/management/users/lookup-ad?username=${AD_USER}" \
     -H "Authorization: Bearer $ADMIN_JWT" \
     -H 'Accept: application/json' \
     -w '\n___HTTP___%{http_code}' 2>/dev/null)
@@ -310,7 +310,7 @@ elif [ "$LOOKUP_AD_AVAILABLE" = "0" ]; then
 else
   FAKE_USER="usuario.fake.999"
   RESP=$(curl -sS --max-time 10 \
-    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/management/users/lookup-ad?username=${FAKE_USER}" \
+    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/guardian/management/users/lookup-ad?username=${FAKE_USER}" \
     -H "Authorization: Bearer $ADMIN_JWT" \
     -H 'Accept: application/json' \
     -w '\n___HTTP___%{http_code}' 2>/dev/null)
@@ -473,7 +473,7 @@ if [ -z "$ADMIN_JWT" ]; then
   warn "T8 PULADO — sem ADMIN_JWT"
 else
   RESP=$(curl -sS --max-time 10 \
-    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/management/users?status=pending" \
+    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/guardian/management/users?status=pending" \
     -H "Authorization: Bearer $ADMIN_JWT" \
     -H 'Accept: application/json' \
     -w '\n___HTTP___%{http_code}' 2>/dev/null)
@@ -513,7 +513,7 @@ elif [ "$APPROVE_AVAILABLE" = "0" ]; then
 else
   note "T9.a — primeira chamada approve($JOAO_PG_ID)"
   RESP=$(curl -sS --max-time 10 -X POST \
-    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/management/users/${JOAO_PG_ID}/approve" \
+    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/guardian/management/users/${JOAO_PG_ID}/approve" \
     -H "Authorization: Bearer $ADMIN_JWT" \
     -H 'Content-Type: application/json' \
     -d '{}' \
@@ -524,7 +524,7 @@ else
 
   note "T9.b — segunda chamada approve($JOAO_PG_ID) — esperado idempotente"
   RESP=$(curl -sS --max-time 10 -X POST \
-    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/management/users/${JOAO_PG_ID}/approve" \
+    "http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1/guardian/management/users/${JOAO_PG_ID}/approve" \
     -H "Authorization: Bearer $ADMIN_JWT" \
     -H 'Content-Type: application/json' \
     -d '{}' \
