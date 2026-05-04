@@ -80,19 +80,23 @@ for c in "$NAME_BACKEND" "$NAME_FRONTEND" "$PG_CONTAINER"; do
   fi
 done
 
-# ====== 2. ALIASES ======
-section "2. Aliases criticos na rede lg-app"
+# ====== 2. NETWORKS DOS CONTAINERS ======
+# Verifica do LADO DO CONTAINER (mais robusto que .Containers do network).
+# Em lg-app os containers podem ter aliases vazios — o NOME do container ja
+# eh o hostname resolvivel na rede. Aliases adicionais so existem quando
+# nome != esperado pelo nginx (ex: Conecthus usa lg-runner-nginx + alias lg-nginx).
+section "2. Networks dos containers (lg-app + aliases adicionais)"
 for c in "$NAME_BACKEND" "$NAME_FRONTEND" "$PG_CONTAINER" lg-nginx lg-streamer; do
   if docker inspect "$c" >/dev/null 2>&1; then
-    ALIASES=$(docker network inspect lg-app \
-      --format "{{range \$i,\$cont := .Containers}}{{if eq \$cont.Name \"$c\"}}{{range \$cont.Aliases}}{{.}} {{end}}{{end}}{{end}}" 2>/dev/null)
-    if [ -n "$ALIASES" ]; then
-      ok "$c em lg-app aliases: $ALIASES"
+    NETS=$(docker inspect "$c" --format '{{range $n,$cfg := .NetworkSettings.Networks}}{{$n}}={{$cfg.Aliases}};{{end}}' 2>/dev/null)
+    if echo "$NETS" | grep -q 'lg-app='; then
+      ALIASES_LG=$(echo "$NETS" | grep -oE 'lg-app=\[[^]]*\]' | head -1)
+      ok "$c em lg-app (${ALIASES_LG:-nome real serve como hostname})"
     else
-      warn "$c NAO esta em lg-app (ou sem aliases)"
+      warn "$c NAO esta em lg-app (networks atuais: $NETS)"
     fi
   else
-    info "$c container nao existe (ok se nao for o ambiente)"
+    info "$c nao existe nesse ambiente"
   fi
 done
 
@@ -157,16 +161,28 @@ echo "$PG_OUT" | grep -q "alembic=" && ok "PG responde + queries OK" || fail "PG
 
 # ====== 7. MEDIAMTX ======
 section "7. mediamtx state (paths)"
-if docker inspect lg-streamer >/dev/null 2>&1 || docker inspect lg-runner-streamer >/dev/null 2>&1; then
-  STREAMER=$(docker inspect lg-streamer --format '{{.Name}}' 2>/dev/null | sed 's|^/||' || echo "lg-runner-streamer")
-  PATHS=$(docker exec "$STREAMER" curl -sS http://localhost:9997/v3/paths/list 2>/dev/null \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); items=d.get("items",[]); print(f"total={len(items)}"); [print(f"  {it[chr(34)+chr(110)+chr(97)+chr(109)+chr(101)+chr(34)]}: ready={it.get(chr(34)+chr(114)+chr(101)+chr(97)+chr(100)+chr(121)+chr(34))} bytes={it.get(chr(34)+chr(98)+chr(121)+chr(116)+chr(101)+chr(115)+chr(82)+chr(101)+chr(99)+chr(101)+chr(105)+chr(118)+chr(101)+chr(100)+chr(34))}") for it in items[:10]]' 2>&1 | head -15)
-  echo "$PATHS" | tee -a "$LOG_FILE"
-  TOTAL=$(echo "$PATHS" | grep -oE 'total=[0-9]+' | cut -d= -f2)
-  if [ "${TOTAL:-0}" = "0" ]; then
-    info "mediamtx 0 paths — esperado quando nenhum cliente HLS conectado nos ultimos 45s"
-  else
+STREAMER=""
+for cand in lg-streamer lg-runner-streamer; do
+  if docker inspect "$cand" >/dev/null 2>&1; then STREAMER="$cand"; break; fi
+done
+if [ -n "$STREAMER" ]; then
+  RAW=$(docker exec "$STREAMER" curl -sS http://localhost:9997/v3/paths/list 2>/dev/null)
+  TOTAL=$(echo "$RAW" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('items',[])))" 2>/dev/null || echo "?")
+  echo "  streamer: $STREAMER" | tee -a "$LOG_FILE"
+  echo "  total paths: $TOTAL" | tee -a "$LOG_FILE"
+  if [ "${TOTAL:-0}" != "0" ] && [ "$TOTAL" != "?" ]; then
+    echo "$RAW" | python3 -c "
+import sys,json
+items = json.load(sys.stdin).get('items',[])
+for it in items[:10]:
+    n = it.get('name','?')
+    r = it.get('ready', False)
+    b = it.get('bytesReceived', 0)
+    print(f'  {n}: ready={r} bytes={b}')
+" 2>&1 | tee -a "$LOG_FILE"
     ok "$TOTAL paths configurados no mediamtx"
+  else
+    info "mediamtx 0 paths — esperado se ninguem pediu HLS nos ultimos 45s (lazy runOnDemand)"
   fi
 else
   info "container streamer nao encontrado nesse ambiente"
